@@ -2,7 +2,9 @@
 A basic implementation of a distributed key-value store that achieves fault tolerance and consensus of updates amongst replica servers using Paxos
 
 # Steps to compile the Server and Client codes: 
-Go to project folder and enter following commands 
+Go to project folder and enter following commands
+- mkdir bin
+- mkdir logs
 - javac -d bin src/com/cs6650/*java
 
 # Commands to run the Server and Client: 
