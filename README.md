@@ -1,6 +1,9 @@
 # distributed-key-value-store
 A basic implementation of a distributed key-value store that achieves fault tolerance and consensus of updates amongst replica servers using Paxos
 
+# Clone the repository using following command:
+- git clone https://github.com/akhil-rane/distributed-key-value-store.git
+
 # Steps to compile the Server and Client codes: 
 Go to project folder and enter following commands
 - mkdir bin
