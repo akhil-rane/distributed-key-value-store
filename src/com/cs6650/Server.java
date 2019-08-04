@@ -3,6 +3,7 @@ package com.cs6650;
 import java.net.*;
 import java.rmi.AccessException;
 import java.rmi.AlreadyBoundException;
+import java.rmi.ConnectException;
 import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
@@ -118,7 +119,7 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 		catch(TimeoutException e) {
 			response.setMessage("Request timed out");
 		}
-		
+
 		logger.info(response.toString());	
 		return response;
 	}
@@ -134,7 +135,7 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 		Response response = new Response();
 		response.setType("delete");
 		response.setReturnValue(null);
-		
+
 		try{
 			invokeProposer(transaction);
 			response.setMessage("Successfully deleted the entry from the datastore");
@@ -142,7 +143,7 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 		catch(TimeoutException e) {
 			response.setMessage("Request timed out");
 		}
-		
+
 		logger.info(response.toString());
 		return response;
 
@@ -158,7 +159,7 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 				throw new TimeoutException();
 			}
 			tryNumber++;
-			
+
 			logger.info("New Paxos round started");
 
 			long proposalNumber = System.currentTimeMillis();
@@ -402,18 +403,23 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 					String[] data = discoveryNode.split(":");
 					String discoveryNodeIPAddress = data[0];
 					int discoveryNodePort = Integer.parseInt(data[1]);
-					
+
 					Registry discoveredRegistry = LocateRegistry.getRegistry(discoveryNodeIPAddress, discoveryNodePort);
-					
+
 					for(String serverID : discoveredRegistry.list()) {
-						DatastoreInterface discoveredRegistryServer = (DatastoreInterface)discoveredRegistry.lookup(serverID);
-						if(!currentServerID.equals(discoveredRegistryServer.getServerID())) {
-							discoverySuccessful = true;
-							server.setStorage(discoveredRegistryServer.getStorage());
-							discoveredRegistryServer.registerNewServer(currentServerID, server);
-							server.logger.info("Registered current server with server: "+discoveredRegistryServer.getServerID());
-							registry.bind(discoveredRegistryServer.getServerID(), discoveredRegistryServer);
-							server.logger.info("Registered server: "+discoveredRegistryServer.getServerID()+" with current server" );
+						try {
+							DatastoreInterface discoveredRegistryServer = (DatastoreInterface)discoveredRegistry.lookup(serverID);
+							if(!currentServerID.equals(discoveredRegistryServer.getServerID())) {
+								discoverySuccessful = true;
+								server.setStorage(discoveredRegistryServer.getStorage());
+								discoveredRegistryServer.registerNewServer(currentServerID, server);
+								server.logger.info("Registered current server with server: "+discoveredRegistryServer.getServerID());
+								registry.bind(discoveredRegistryServer.getServerID(), discoveredRegistryServer);
+								server.logger.info("Registered server: "+discoveredRegistryServer.getServerID()+" with current server" );
+							}
+						}
+						catch(ConnectException e) {
+							continue;
 						}
 					}
 					if(discoverySuccessful==true) break;
