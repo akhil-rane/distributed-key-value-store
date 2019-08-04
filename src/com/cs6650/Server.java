@@ -39,8 +39,10 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 	private long previousProposalNumber;
 
 	private Transaction previousAcceptedValue;
-	
+
 	private long lastLearnedProposalNumber;
+
+	private long randomAcceptorFailureNumber = 3l;
 
 	protected Server(String serverID, Registry registry, int port) throws RemoteException {
 		super();
@@ -70,7 +72,7 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 	public void setStorage(HashMap<String, String> storage) {
 		this.storage = storage;
 	}
-	
+
 
 	public synchronized Response get(String key) throws RemoteException {
 		logger.info("Request Query [type=" + "get" + ", key=" + key + "]");
@@ -99,16 +101,16 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 		transaction.setType("put");
 		transaction.setKey(key);
 		transaction.setValue(value);
-		
+
 		logger.info("Invoking Proposer");
 		invokeProposer(transaction);
-		
+
 		Response response = new Response();
 		response.setType("put");
 		response.setReturnValue(null);
 		response.setMessage("Successfully inserted the entry in the datastore");
 		logger.info(response.toString());	
-		
+
 		return response;
 	}
 
@@ -118,16 +120,16 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 		transaction.setType("delete");
 		transaction.setKey(key);
 		transaction.setType(null);
-		
+
 		invokeProposer(transaction);
 		logger.info("Invoking Proposer");
-		
+
 		Response response = new Response();
 		response.setType("delete");
 		response.setReturnValue(null);
 		response.setMessage("Successfully deleted the entry from the datastore");
 		logger.info(response.toString());
-		
+
 		return response;
 
 	}
@@ -135,13 +137,13 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 	public void invokeProposer(Transaction transaction) throws AccessException, RemoteException {
 
 		boolean isRoundFailed = true;
-		
+
 		while(isRoundFailed){
 			logger.info("New Paxos round started");
-			
+
 			long proposalNumber = System.currentTimeMillis();
 			logger.info("New proposal number is "+proposalNumber);
-			
+
 			List<Promise> promises = new ArrayList<Promise>();
 			for(String serverID: this.registry.list()) {
 				try {
@@ -161,7 +163,7 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 				}
 
 			}
-			
+
 			if( promises.size() <= this.registry.list().length / 2) {
 				try {
 					logger.info("Majority of acceptors didn't promise, restarting paxos run in 2 seconds");
@@ -173,7 +175,7 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 			}
 
 			logger.info("Majority of acceptors promised");
-			
+
 			long max = 0l;
 			Transaction value = transaction;
 
@@ -183,7 +185,7 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 					value = promise.getPreviousAcceptedValue();
 				}
 			}
-			
+
 			logger.info("Value for accept: "+value.toString());
 			List<Accepted> accepteds = new ArrayList<Accepted>();
 
@@ -204,7 +206,7 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 					logger.log(Level.SEVERE, "Not Bound Exception", e);
 				}
 			}
-			
+
 			if( accepteds.size() <= this.registry.list().length / 2) {
 				try {
 					logger.info("Majority of acceptors didn't accept, restarting paxos run in 2 seconds");
@@ -216,7 +218,7 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 			}
 
 			logger.info("Majority of acceptors accepted");
-			
+
 			logger.info("Invoking Learners");
 			for(Accepted accepted: accepteds) {
 				try {
@@ -232,9 +234,9 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 					logger.log(Level.SEVERE, "Not Bound Exception", e);
 				}
 			}
-			
+
 			logger.info("Learning job finished");
-			
+
 			isRoundFailed = false;
 		}
 		logger.info("Paxos round ended");
@@ -243,6 +245,12 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 
 
 	public Promise prepare(long proposalNumber) throws RemoteException {
+		// Acceptor is configured to fail at random times - If proposal number % randomAcceptorFailureNumber == 0
+		if(proposalNumber % this.randomAcceptorFailureNumber == 0l) {
+			logger.info("Acceptor failed at random time as per configuration");
+			throw new RemoteException();
+		}
+
 		if(proposalNumber<=this.previousProposalNumber) {
 			logger.info("Prepare request Declined as previous proposal number("+this.previousProposalNumber+") is greater than new proposal number("+proposalNumber+")");
 			throw new RemoteException();
@@ -260,37 +268,42 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 
 
 	public Accepted accept(long proposalNumber, Transaction value) throws RemoteException {
-		
+		// Acceptor is configured to fail at random times - If proposal number % randomAcceptorFailureNumber == 0
+		if(proposalNumber % this.randomAcceptorFailureNumber == 0l) {
+			logger.info("Acceptor failed at random time as per configuration");
+			throw new RemoteException();
+		}
+
 		if(proposalNumber<this.previousProposalNumber) {
 			logger.info("Accept request Declined as new proposal number("+proposalNumber+") is less than previous proposal numberr("+this.previousProposalNumber+")");
 			throw new RemoteException();
 		}
-		
+
 		logger.info("Accept request confirmed for transaction: "+value.toString());
-		
+
 		Accepted accepted = new Accepted();
 		accepted.setProposalNumber(proposalNumber);
 		accepted.setValue(value);
-		
+
 		return accepted;
 	}
-	
+
 	public synchronized void invokeLearner(Accepted accepted) throws RemoteException{
 		logger.info("Learner invoked");
-		
+
 		if(this.lastLearnedProposalNumber == accepted.getProposalNumber()) {
 			logger.info("Aborting learning, value is already learned");
 			throw new RemoteException();
 		}
-		
+
 		if(accepted.getServerID() == this.serverID) {
 			logger.info("Erasing previous proposal number and accepted value");
 			this.previousProposalNumber = 0;
 			this.previousAcceptedValue = null;
 		}
-		
+
 		Transaction trasaction = accepted.getValue();
-		
+
 		if(trasaction.getType().equals("put")) {
 			this.storage.put(trasaction.getKey(), trasaction.getValue());
 		}
