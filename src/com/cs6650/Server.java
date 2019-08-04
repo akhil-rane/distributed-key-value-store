@@ -18,6 +18,7 @@ import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
 import java.io.*; 
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public class Server extends UnicastRemoteObject implements DatastoreInterface
 { 
@@ -42,7 +43,9 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 
 	private long lastLearnedProposalNumber;
 
-	private long randomAcceptorFailureNumber = 3l;
+	private long randomAcceptorFailureNumber = 81l;
+
+	private int maxPaxosRetrys = 3;
 
 	protected Server(String serverID, Registry registry, int port) throws RemoteException {
 		super();
@@ -52,8 +55,8 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 		this.port = port;
 	}
 
-	public void registerNewServer(String currentServerID, DatastoreInterface server) throws RemoteException, AlreadyBoundException{
-		this.registry.bind(currentServerID, server);
+	public void registerNewServer(String currentServerID, DatastoreInterface server) throws RemoteException{
+		this.registry.rebind(currentServerID, server);
 		this.logger.info("Registered new server: "+currentServerID);
 	}
 
@@ -103,14 +106,20 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 		transaction.setValue(value);
 
 		logger.info("Invoking Proposer");
-		invokeProposer(transaction);
 
 		Response response = new Response();
 		response.setType("put");
 		response.setReturnValue(null);
-		response.setMessage("Successfully inserted the entry in the datastore");
-		logger.info(response.toString());	
 
+		try {
+			invokeProposer(transaction);
+			response.setMessage("Successfully inserted the entry in the datastore");
+		}
+		catch(TimeoutException e) {
+			response.setMessage("Request timed out");
+		}
+		
+		logger.info(response.toString());	
 		return response;
 	}
 
@@ -121,24 +130,35 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 		transaction.setKey(key);
 		transaction.setType(null);
 
-		invokeProposer(transaction);
 		logger.info("Invoking Proposer");
-
 		Response response = new Response();
 		response.setType("delete");
 		response.setReturnValue(null);
-		response.setMessage("Successfully deleted the entry from the datastore");
+		
+		try{
+			invokeProposer(transaction);
+			response.setMessage("Successfully deleted the entry from the datastore");
+		}
+		catch(TimeoutException e) {
+			response.setMessage("Request timed out");
+		}
+		
 		logger.info(response.toString());
-
 		return response;
 
 	}
 
-	public void invokeProposer(Transaction transaction) throws AccessException, RemoteException {
+	public void invokeProposer(Transaction transaction) throws AccessException, RemoteException, TimeoutException {
 
 		boolean isRoundFailed = true;
+		int tryNumber = 1;
 
 		while(isRoundFailed){
+			if(tryNumber > this.maxPaxosRetrys) {
+				throw new TimeoutException();
+			}
+			tryNumber++;
+			
 			logger.info("New Paxos round started");
 
 			long proposalNumber = System.currentTimeMillis();
@@ -361,7 +381,6 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 			Registry registry = LocateRegistry.createRegistry(Integer.parseInt(args[0]));
 			String currentServerID = createServerID(port);
 			Server server = new Server(currentServerID, registry, port);
-			//Naming.rebind("//localhost:"+port+"/Server", server);
 
 			registry.rebind("Server", server);
 
@@ -383,8 +402,9 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 					String[] data = discoveryNode.split(":");
 					String discoveryNodeIPAddress = data[0];
 					int discoveryNodePort = Integer.parseInt(data[1]);
+					
 					Registry discoveredRegistry = LocateRegistry.getRegistry(discoveryNodeIPAddress, discoveryNodePort);
-
+					
 					for(String serverID : discoveredRegistry.list()) {
 						DatastoreInterface discoveredRegistryServer = (DatastoreInterface)discoveredRegistry.lookup(serverID);
 						if(!currentServerID.equals(discoveredRegistryServer.getServerID())) {
