@@ -14,3 +14,9 @@ Go to project folder and enter following commands
 Go to project folder and enter following commands 
 - Server: java -cp bin com.cs6650.Server <server_port>
 - Client: java -cp bin com.cs6650.Client <server_ip_address> <server_port> 
+
+# Configuring discovery nodes:
+Every server uses discovery nodes to connect to the cluster. If it cannot connect to any of the discovery nodes, it will start as a standalone cluster. The discovery nodes can be configured in the following file
+- /resources/config.properties
+Note: Please restart the server if you make any changes to the above file
+
