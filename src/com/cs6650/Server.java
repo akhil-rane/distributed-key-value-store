@@ -44,6 +44,7 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 
 	private long lastLearnedProposalNumber;
 
+	// This value is configurable for random acceptor failures
 	private long randomAcceptorFailureNumber = 81l;
 
 	private int maxPaxosRetrys = 3;
@@ -129,7 +130,7 @@ public class Server extends UnicastRemoteObject implements DatastoreInterface
 		Transaction transaction = new Transaction();
 		transaction.setType("delete");
 		transaction.setKey(key);
-		transaction.setType(null);
+		transaction.setValue(null);
 
 		logger.info("Invoking Proposer");
 		Response response = new Response();
