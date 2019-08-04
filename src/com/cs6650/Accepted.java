@@ -1,6 +1,8 @@
 package com.cs6650;
 
-public class Accepted {
+import java.io.Serializable;
+
+public class Accepted implements Serializable {
 	
 	private String serverID;
 	

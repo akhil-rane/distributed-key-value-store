@@ -1,6 +1,8 @@
 package com.cs6650;
 
-public class Promise {
+import java.io.Serializable;
+
+public class Promise implements Serializable {
 	
 	private String serverID;
 	
